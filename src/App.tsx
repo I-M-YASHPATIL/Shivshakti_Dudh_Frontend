@@ -45,7 +45,8 @@ function AppInner({ role, onLogout }: { role: UserRole; onLogout: () => void }) 
     }
   }, [role, loading, branches.length]);
 
-  // Guard against a limited account ever landing on a page it shouldn't see
+  // Guard against a limited account ever landing on a page it shouldn't see hii yash
+  
   useEffect(() => {
     if (role === 'limited' && !LIMITED_PAGES.includes(page)) {
       setPage('dashboard');
