@@ -4,9 +4,17 @@ import { useBranch } from "../pages/Branchcontext";
 import type { MilkEntryResponse, AnimalType, FarmerAnimalType } from "../types/dairyTypes";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
-import { Sun, Moon, Save, Trash2, RefreshCw } from "lucide-react";
+import { Sun, Moon, Save, Trash2, RefreshCw, Pencil, X } from "lucide-react";
 
-export default function MilkEntryPage() {
+interface MilkEntryPageProps {
+  /** When false, the edit action is hidden. Defaults to true. */
+  canEdit?: boolean;
+  /** When false (limited-access accounts), the delete action is hidden. Defaults to true. */
+  canDelete?: boolean;
+}
+
+export default function MilkEntryPage({ canEdit = true, canDelete = true }: MilkEntryPageProps) {
+  const showActionsColumn = canEdit || canDelete;
   const { activeBranchCode } = useBranch();
   const [session, setSession] = useState<"MORNING" | "EVENING">("MORNING");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -21,6 +29,7 @@ export default function MilkEntryPage() {
   const [rate, setRate] = useState("");
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [todayEntries, setTodayEntries] = useState<MilkEntryResponse[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
 
@@ -139,7 +148,7 @@ export default function MilkEntryPage() {
     }
     setSaving(true);
     try {
-      await milkEntryAPI.create(activeBranchCode, {
+      const payload = {
         farmerNumber: parseInt(farmerNum),
         entryDate: date,
         session,
@@ -147,26 +156,54 @@ export default function MilkEntryPage() {
         liters: parseFloat(liters),
         fat: parseFloat(fat),
         snf: snf ? parseFloat(snf) : undefined,
-      });
-      const emoji = animalType === "COW" ? "🐄" : "🐃";
-      toast.success(
-        `✅ ${emoji} ${farmerName} - ${liters}L @ ₹${rate} = ₹${amount}`,
-      );
-      setFarmerNum("");
-      setFarmerName("");
-      setLiters("");
-      setFat("");
-      setSnf("");
-      setRate("");
-      setAmount("");
-      setFarmerError("");
+      };
+      if (editingId != null) {
+        await milkEntryAPI.update(activeBranchCode, editingId, payload);
+        toast.success("नोंद अद्ययावत झाली");
+      } else {
+        await milkEntryAPI.create(activeBranchCode, payload);
+        const emoji = animalType === "COW" ? "🐄" : "🐃";
+        toast.success(
+          `✅ ${emoji} ${farmerName} - ${liters}L @ ₹${rate} = ₹${amount}`,
+        );
+      }
+      resetForm();
       document.getElementById("farmerInput")?.focus();
       loadEntries();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Error saving entry");
+      toast.error(
+        err.response?.data?.message ||
+          (editingId != null ? "Error updating entry" : "Error saving entry"),
+      );
     } finally {
       setSaving(false);
     }
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setFarmerNum("");
+    setFarmerName("");
+    setLiters("");
+    setFat("");
+    setSnf("");
+    setRate("");
+    setAmount("");
+    setFarmerError("");
+  };
+
+  const startEdit = (entry: MilkEntryResponse) => {
+    setEditingId(entry.id);
+    setFarmerNum(entry.farmerNumber.toString());
+    setFarmerName(entry.farmerName);
+    setFarmerError("");
+    const type = (entry.animalType || entry.milkType || "COW") as AnimalType;
+    setAnimalType(type);
+    setFarmerAnimalType(type);
+    setLiters(entry.liters.toString());
+    setFat(entry.fat.toString());
+    setSnf(entry.snf != null ? entry.snf.toString() : "");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDelete = async (id: number) => {
@@ -175,6 +212,7 @@ export default function MilkEntryPage() {
     try {
       await milkEntryAPI.delete(activeBranchCode, id);
       toast.success("Deleted");
+      if (editingId === id) resetForm();
       loadEntries();
     } catch {
       toast.error("Delete failed");
@@ -231,10 +269,24 @@ export default function MilkEntryPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-amber-100 p-6">
-        <h3 className="text-green-900 font-bold text-lg mb-4">
-          {session === "MORNING" ? "🌅 सकाळ" : "🌙 संध्याकाळ"} नवीन नोंद
-        </h3>
+      <div
+        className={`bg-white rounded-2xl shadow-sm border p-6 ${editingId != null ? "border-blue-300 ring-2 ring-blue-100" : "border-amber-100"}`}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-green-900 font-bold text-lg">
+            {editingId != null
+              ? "✏️ नोंद संपादित करा"
+              : `${session === "MORNING" ? "🌅 सकाळ" : "🌙 संध्याकाळ"} नवीन नोंद`}
+          </h3>
+          {editingId != null && (
+            <button
+              onClick={resetForm}
+              className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100"
+            >
+              <X size={14} /> रद्द करा
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">
@@ -390,25 +442,45 @@ export default function MilkEntryPage() {
             )}
           </div>
         </div>
-        <button
-          ref={saveRef}
-          onClick={handleSave}
-          disabled={
-            saving ||
-            !activeBranchCode ||
-            !farmerName ||
-            !liters ||
-            !fat ||
-            !!fatInvalid ||
-            !!snfInvalid
-          }
-          className={`mt-4 w-full flex items-center justify-center gap-2 font-bold py-3.5 rounded-xl transition-all text-white ${animalType === "COW" ? "bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-300" : "bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300"}`}
-        >
-          <Save size={18} />
-          {saving
-            ? "Saving..."
-            : `जतन करा — ${animalType === "COW" ? "🐄 गाय" : "🐃 म्हैस"}`}
-        </button>
+        <div className="mt-4 flex gap-3">
+          <button
+            ref={saveRef}
+            onClick={handleSave}
+            disabled={
+              saving ||
+              !activeBranchCode ||
+              !farmerName ||
+              !liters ||
+              !fat ||
+              !!fatInvalid ||
+              !!snfInvalid
+            }
+            className={`flex-1 flex items-center justify-center gap-2 font-bold py-3.5 rounded-xl transition-all text-white ${
+              editingId != null
+                ? "bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300"
+                : animalType === "COW"
+                  ? "bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-300"
+                  : "bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300"
+            }`}
+          >
+            <Save size={18} />
+            {saving
+              ? editingId != null
+                ? "अद्ययावत करत आहे..."
+                : "Saving..."
+              : editingId != null
+                ? "नोंद अद्ययावत करा"
+                : `जतन करा — ${animalType === "COW" ? "🐄 गाय" : "🐃 म्हैस"}`}
+          </button>
+          {editingId != null && (
+            <button
+              onClick={resetForm}
+              className="px-5 py-3.5 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all"
+            >
+              रद्द करा
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-amber-100 overflow-hidden">
@@ -445,7 +517,7 @@ export default function MilkEntryPage() {
                 <th className="px-4 py-3 text-right">SNF</th>
                 <th className="px-4 py-3 text-right">दर</th>
                 <th className="px-4 py-3 text-right">रक्कम</th>
-                <th className="px-4 py-3"></th>
+                {showActionsColumn && <th className="px-4 py-3"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -453,9 +525,11 @@ export default function MilkEntryPage() {
                 <tr
                   key={entry.id}
                   className={
-                    entry.animalType === "BUFFALO"
-                      ? "bg-indigo-50/20 hover:bg-indigo-50"
-                      : "hover:bg-amber-50"
+                    entry.id === editingId
+                      ? "bg-blue-50 ring-1 ring-inset ring-blue-200"
+                      : entry.animalType === "BUFFALO"
+                        ? "bg-indigo-50/20 hover:bg-indigo-50"
+                        : "hover:bg-amber-50"
                   }
                 >
                   <td className="px-4 py-3 font-bold text-green-800">
@@ -487,20 +561,36 @@ export default function MilkEntryPage() {
                   <td className="px-4 py-3 text-right font-bold text-green-700">
                     ₹{entry.amount.toFixed(2)}
                   </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleDelete(entry.id)}
-                      className="text-red-400 hover:text-red-600 p-1"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
+                  {showActionsColumn && (
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {canEdit && (
+                          <button
+                            onClick={() => startEdit(entry)}
+                            className="text-blue-400 hover:text-blue-600 p-1"
+                            title="Edit"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDelete(entry.id)}
+                            className="text-red-400 hover:text-red-600 p-1"
+                            title="Delete"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {todayEntries.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={showActionsColumn ? 9 : 8}
                     className="px-4 py-8 text-center text-gray-400"
                   >
                     कोणत्याही नोंदी नाहीत

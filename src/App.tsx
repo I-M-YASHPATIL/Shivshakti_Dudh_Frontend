@@ -11,11 +11,11 @@ import FatRatesPage from './pages/FatRatesPage';
 import BranchSetupPage from './pages/Branchsetuppage';
 import FarmerYearlyReport from './pages/Farmeryearlyreport';
 import LedgerPage from './pages/LedgerPage';
-import LoginPage from './pages/LoginPage';
+import LoginPage, { type UserRole } from './pages/LoginPage';
 
 type Page = 'dashboard' | 'entry' | 'farmers' | 'bills' | 'yearly' | 'rates' | 'branches' | 'ledger';
 
-const navItems = [
+const allNavItems = [
   { id: 'dashboard' as Page, label: 'Dashboard',      labelMr: 'डॅशबोर्ड',     icon: <BarChart3  size={20} /> },
   { id: 'entry'     as Page, label: 'Milk Entry',     labelMr: 'दूध नोंद',      icon: <Milk      size={20} /> },
   { id: 'farmers'   as Page, label: 'Productors',        labelMr: 'उत्पादक',        icon: <Users     size={20} /> },
@@ -26,22 +26,36 @@ const navItems = [
   { id: 'branches'  as Page, label: 'Branches',       labelMr: 'शाखा',           icon: <Building2 size={20} /> },
 ];
 
-function AppInner({ onLogout }: { onLogout: () => void }) {
+// Limited-access accounts (the milk-society phone login) only ever see these two tabs.
+const LIMITED_PAGES: Page[] = ['dashboard', 'entry'];
+
+function AppInner({ role, onLogout }: { role: UserRole; onLogout: () => void }) {
   const [page,        setPage]        = useState<Page>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { loading, branches } = useBranch();
 
-  // Auto-redirect to Branch setup if no branches exist
+  const navItems = role === 'limited'
+    ? allNavItems.filter(item => LIMITED_PAGES.includes(item.id))
+    : allNavItems;
+
+  // Auto-redirect to Branch setup if no branches exist (admin only — limited accounts have no branches tab)
   useEffect(() => {
-    if (!loading && branches.length === 0) {
+    if (role === 'admin' && !loading && branches.length === 0) {
       setPage('branches');
     }
-  }, [loading, branches.length]);
+  }, [role, loading, branches.length]);
+
+  // Guard against a limited account ever landing on a page it shouldn't see
+  useEffect(() => {
+    if (role === 'limited' && !LIMITED_PAGES.includes(page)) {
+      setPage('dashboard');
+    }
+  }, [role, page]);
 
   const renderPage = () => {
     switch (page) {
       case 'dashboard': return <DashboardPage />;
-      case 'entry':     return <MilkEntryPage />;
+      case 'entry':     return <MilkEntryPage canEdit={true} canDelete={role === 'admin'} />;
       case 'farmers':   return <FarmersPage />;
       case 'bills':     return <BillsPage />;
       case 'ledger':    return <LedgerPage />;
@@ -130,12 +144,14 @@ function AppInner({ onLogout }: { onLogout: () => void }) {
             {loading ? (
               <span className="text-xs text-gray-400">लोड होत आहे...</span>
             ) : branches.length === 0 ? (
-              <button
-                onClick={() => setPage('branches')}
-                className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-100"
-              >
-                ⚠️ शाखा तयार करा
-              </button>
+              role === 'admin' ? (
+                <button
+                  onClick={() => setPage('branches')}
+                  className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-100"
+                >
+                  ⚠️ शाखा तयार करा
+                </button>
+              ) : null
             ) : branches.length === 1 ? (
               <span className="text-xs font-bold text-green-700 bg-green-100 px-3 py-1.5 rounded-lg">
                 🏢 {branches[0].name}
@@ -165,20 +181,24 @@ function AppInner({ onLogout }: { onLogout: () => void }) {
 
 export default function App() {
   const [authed, setAuthed] = useState(() => localStorage.getItem('dairy_auth') === 'true');
+  const [role, setRole] = useState<UserRole>(() =>
+    localStorage.getItem('dairy_role') === 'limited' ? 'limited' : 'admin'
+  );
 
   const handleLogout = () => {
     localStorage.removeItem('dairy_auth');
+    localStorage.removeItem('dairy_role');
     setAuthed(false);
   };
 
   if (!authed) {
-    return <LoginPage onLogin={() => setAuthed(true)} />;
+    return <LoginPage onLogin={(r) => { setRole(r); setAuthed(true); }} />;
   }
 
   return (
     <BranchProvider>
       <Toaster position="top-right" />
-      <AppInner onLogout={handleLogout} />
+      <AppInner role={role} onLogout={handleLogout} />
     </BranchProvider>
   );
 }

@@ -6,11 +6,16 @@ import { Milk, Lock, User, Eye, EyeOff, ArrowRight } from 'lucide-react';
 // anyone who opens dev tools, and the backend API itself still accepts
 // requests without any login. Treat this as a "keep casual visitors out"
 // screen only — for real protection, add auth on the backend.
-const VALID_USERNAME = 'Shivshakti';
-const VALID_PASSWORD = '6510';
+const ADMIN_USERNAME = 'Shivshakti';
+const ADMIN_PASSWORD = '6510';
+
+const LIMITED_USERNAME = '7020271813';
+const LIMITED_PASSWORD = 'Yash';
+
+export type UserRole = 'admin' | 'limited';
 
 interface LoginPageProps {
-  onLogin: () => void;
+  onLogin: (role: UserRole) => void;
 }
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
@@ -27,9 +32,16 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
 
     // Small delay so the button/loading state actually registers for the user
     setTimeout(() => {
-      if (username.trim() === VALID_USERNAME && password === VALID_PASSWORD) {
+      const enteredUsername = username.trim();
+
+      if (enteredUsername === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
         localStorage.setItem('dairy_auth', 'true');
-        onLogin();
+        localStorage.setItem('dairy_role', 'admin');
+        onLogin('admin');
+      } else if (enteredUsername === LIMITED_USERNAME && password === LIMITED_PASSWORD) {
+        localStorage.setItem('dairy_auth', 'true');
+        localStorage.setItem('dairy_role', 'limited');
+        onLogin('limited');
       } else {
         setError('चुकीचे युजरनेम किंवा पासवर्ड. कृपया पुन्हा प्रयत्न करा.');
       }

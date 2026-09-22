@@ -6,7 +6,7 @@ import type {
 } from '../types/dairyTypes';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8082/api',
+  baseURL: 'http://localhost:8082/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -111,6 +111,17 @@ export const milkEntryAPI = {
     api.get<MilkEntryResponse[]>(`/${branchCode}/entries/range`, {
       params: { from, to },
     }).then(r => r.data.map(normalizeMilkEntry)),
+
+  update: (branchCode: string, id: number, data: MilkEntryRequest) =>
+    api.put<MilkEntryResponse>(`/${branchCode}/entries/${id}`, {
+      farmerNumber: data.farmerNumber,
+      entryDate:    data.entryDate,
+      session:      data.session,
+      milkType:     data.animalType,
+      liters:       data.liters,
+      fat:          data.fat,
+      snf:          data.snf,
+    }).then(r => normalizeMilkEntry(r.data)),
 
   delete: (branchCode: string, id: number) =>
     api.delete(`/${branchCode}/entries/${id}`),

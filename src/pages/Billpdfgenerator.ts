@@ -533,7 +533,7 @@ function buildBillHtml(
 
   const rows = buildDayRows(entries, bill.fromDate, bill.toDate, hasSnf, sessionColspan);
 
-  const deductLeft = `(-) ${savingPct}% बचत कपात: <b>-रु.${n(savingDeduction)}</b>`
+  const deductLeft = `(-) $ बचत कपात: <b>-रु.${n(savingDeduction)}</b>`
     + (advanceDeduction > 0 ? `${SEP}(-) आगाऊ: <b>-रु.${n(advanceDeduction)}</b>` : '')
     + (otherDeductions  > 0 ? `${SEP}(-) इतर: <b>-रु.${n(otherDeductions)}</b>`   : '');
 
