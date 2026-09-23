@@ -513,8 +513,6 @@ function buildBillHtml(
 
   const netDene = round2(netAmount - jamaForCard);
 
-  const savingPct = savingDeduction > 0 && totalAmount > 0
-    ? Math.round((savingDeduction / totalAmount) * 100) : 3;
 
   const animalLabel =
     cowLiters > 0 && bufLiters > 0 ? 'गाय & म्हैस'
