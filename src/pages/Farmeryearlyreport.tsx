@@ -74,7 +74,7 @@ function matchBill(bill: BillResponse, period: Period): boolean {
 const rs = (v: number) => `₹${Math.floor(v)}`;
 
 // सादिलवार — प्रत्येक सक्रिय कालावधी (bill) मागे कापले जाणारे स्थिर शुल्क
-const SADILVAR = 5;
+const SADILVAR = 6;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function FarmerYearlyReport() {

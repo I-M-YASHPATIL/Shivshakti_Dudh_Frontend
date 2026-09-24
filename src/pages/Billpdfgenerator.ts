@@ -4,7 +4,7 @@ import type { BillResponse, MilkEntryResponse, LedgerResponse } from '../types/d
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const SADILVAR_AMOUNT = 5;
+const SADILVAR_AMOUNT = 6;
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ function isMixedBill(bill: BillResponse): boolean {
   return (bill.cowTotalLiters ?? 0) > 0 && (bill.buffaloTotalLiters ?? 0) > 0;
 }
 
-/** सादिलवार — always ₹5 per bill card. */
+/** सादिलवार — always ₹6 per bill card. */
 function sadilvarOf(_bill: BillResponse): number {
   return SADILVAR_AMOUNT;
 }

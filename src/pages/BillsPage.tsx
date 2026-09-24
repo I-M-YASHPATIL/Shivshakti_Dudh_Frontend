@@ -12,7 +12,7 @@ const n = (v: number | undefined | null, decimals = 2): string => ((v ?? 0)).toF
 // ─── Shared bill maths (must match Billpdfgenerator.ts) ──────────────────────
 
 /** Fixed सादिलवार charge applied to every (split) bill. */
-const SADILVAR_AMOUNT = 5;
+const SADILVAR_AMOUNT = 6;
 
 const round2 = (v: number): number => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -20,7 +20,7 @@ function isMixedBill(bill: BillResponse): boolean {
   return (bill.cowTotalLiters ?? 0) > 0 && (bill.buffaloTotalLiters ?? 0) > 0;
 }
 
-/** सादिलवार — always ₹5 per bill card. */
+/** सादिलवार — always ₹6 per bill card. */
 function sadilvarOf(_bill: BillResponse): number {
   return SADILVAR_AMOUNT;
 }
@@ -34,7 +34,7 @@ function totalDeductions(bill: BillResponse): number {
   );
 }
 
-/** Net payable derived from components so सादिलवार is always ₹5. */
+/** Net payable derived from components so सादिलवार is always ₹6. */
 function computeNetAmount(bill: BillResponse): number {
   return round2((bill.totalAmount ?? 0) - totalDeductions(bill));
 }
@@ -369,7 +369,7 @@ function buildPaymentRegisterHtml(bills: BillResponse[], periodLabel: string): s
   }
 
   // Grand totals: sum section-level numbers so mixed bills correctly count
-  // both a cow-share and a buffalo-share (2×₹5 सादिलवार).
+  // both a cow-share and a buffalo-share (2×₹6 सादिलवार).
   const grandL = bills.reduce((a, b) => a + (b.totalLiters ?? 0), 0);
   const grandA = bills.reduce((a, b) => a + (b.totalAmount ?? 0), 0);
   let grandS = 0, grandN = 0;
@@ -662,7 +662,7 @@ export default function BillsPage() {
               <span className="text-2xl">💰</span>
               <div>
                 <p className="text-xs font-semibold text-orange-700">बचत कपात + सादिलवार</p>
-                <p className="font-bold text-orange-800 text-sm">३% बचत + ₹५ सादिलवार वजा केली जाईल</p>
+                <p className="font-bold text-orange-800 text-sm">३% बचत + ₹६ सादिलवार वजा केली जाईल</p>
               </div>
             </div>
           </div>

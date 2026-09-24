@@ -60,14 +60,14 @@ function getMonthPeriods(year: number, month: number): Period[] {
 /**
  * निव्वळ रक्कम मोजतो — PDF बिलाप्रमाणेच.
  * API चा `netAmount` सादिलवार वगळतो, त्यामुळे तो वापरत नाही.
- * तसेच mixed bill (गाय + म्हैस) असल्यास प्रत्येक प्रकारासाठी स्वतंत्र ₹5 सादिलवार
+ * तसेच mixed bill (गाय + म्हैस) असल्यास प्रत्येक प्रकारासाठी स्वतंत्र ₹6 सादिलवार
  * वजा केला जातो (म्हणजे दोन्हीसाठी एकूण ₹10).
  */
 function netAmountForMilkType(
   bill: BillResponse,
   choice: MilkTypeChoice,
 ): number {
-  const SADILVAR_PER_TYPE = 5;
+  const SADILVAR_PER_TYPE = 6;
   const isMixed = bill.cowTotalAmount > 0 && bill.buffaloTotalAmount > 0;
 
   const getShare = (type: "COW" | "BUFFALO") => {
@@ -91,7 +91,7 @@ function netAmountForMilkType(
   };
 
   if (choice === "BOTH") {
-    // Mixed bill असेल तर दोन्ही प्रकारांसाठी 2 × ₹5 = ₹10 वजा होतो
+    // Mixed bill असेल तर दोन्ही प्रकारांसाठी 2 × ₹6 = ₹12 वजा होतो
     return calculateNet(bill.totalAmount, 1, isMixed ? 2 : 1);
   }
 
