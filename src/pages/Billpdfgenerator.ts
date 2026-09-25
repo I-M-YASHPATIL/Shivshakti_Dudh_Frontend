@@ -2,11 +2,7 @@ import jsPDF from 'jspdf';
 import { format, parseISO, eachDayOfInterval } from 'date-fns';
 import type { BillResponse, MilkEntryResponse, LedgerResponse } from '../types/dairyTypes';
 
-// ─── constants ────────────────────────────────────────────────────────────────
-
 const SADILVAR_AMOUNT = 6;
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
 
 function groupByDate(entries: MilkEntryResponse[], from: string, to: string) {
   return eachDayOfInterval({ start: parseISO(from), end: parseISO(to) })
@@ -30,17 +26,14 @@ const n0 = (v: number | undefined | null): string => Math.round(v ?? 0).toString
 const nTrunc = (v: number | undefined | null): string =>
   Math.trunc(v ?? 0).toString();
 
-/** A bill that carries both cow and buffalo milk. */
 function isMixedBill(bill: BillResponse): boolean {
   return (bill.cowTotalLiters ?? 0) > 0 && (bill.buffaloTotalLiters ?? 0) > 0;
 }
 
-/** सादिलवार — always ₹6 per bill card. */
 function sadilvarOf(_bill: BillResponse): number {
   return SADILVAR_AMOUNT;
 }
 
-/** Every deduction that applies to a (single) bill — सादिलवार included. */
 function totalDeductions(bill: BillResponse): number {
   return round2(
     (bill.savingDeduction  ?? 0) +
@@ -120,8 +113,6 @@ function sectionJamaForBill(
   }
   return round2(total);
 }
-
-// ─── expand a mixed bill into two separate single-type bills ─────────────────
 
 interface MixedSummary {
   totalNetBill: number;
@@ -208,8 +199,6 @@ function expandMixedToRenderBills(
     { bill: bufBill, entries: bufEntries, showLedger: true,  sectionType: 'BUFFALO', sourceBill: bill },
   ];
 }
-
-// ─── shared page CSS ──────────────────────────────────────────────────────────
 
 const PAGE_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap');
@@ -511,7 +500,12 @@ function buildBillHtml(
         : sectionJamaForBill(bill, 'COW', ledger))
     : 0;
 
-  const netDene = round2(netAmount - jamaForCard);
+  let netDene = round2(netAmount - jamaForCard);
+  if (ledger && sectionType && sourceBill && isMixedBill(sourceBill)) {
+    const otherType = sectionType === 'COW' ? 'BUFFALO' : 'COW';
+    const o = mixedSectionFigures(sourceBill, otherType, ledger);
+    netDene = settleAcrossSections(netDene, round2(o.net - o.jama));
+  }
 
 
   const animalLabel =
@@ -617,7 +611,32 @@ function buildBillHtml(
 </div>`;
 }
 
-// ─── Payment Register ────────────────────────────────────────────────────────
+function mixedSectionFigures(
+  bill:   BillResponse,
+  type:   'COW' | 'BUFFALO',
+  ledger?: LedgerResponse,
+) {
+  const totalAmount = bill.totalAmount ?? 0;
+  const amount = type === 'COW' ? (bill.cowTotalAmount ?? 0) : (bill.buffaloTotalAmount ?? 0);
+  const ratio  = totalAmount > 0 ? amount / totalAmount : 0;
+  const liters = type === 'COW' ? (bill.cowTotalLiters ?? 0) : (bill.buffaloTotalLiters ?? 0);
+
+  const saving  = round2((bill.savingDeduction  ?? 0) * ratio);
+  const advance = round2((bill.advanceDeduction ?? 0) * ratio);
+  const other   = round2((bill.otherDeductions  ?? 0) * ratio);
+
+  const deduct  = round2(saving + advance + other);
+  const net     = round2(amount - deduct - SADILVAR_AMOUNT);
+  const jama    = sectionJamaForBill(bill, type, ledger);
+
+  return { liters, amount, deduct, net, saving, advance, other, jama };
+}
+
+function settleAcrossSections(rawThis: number, rawOther: number): number {
+  if (rawThis > 0 && rawOther < 0) return round2(Math.max(0, rawThis + rawOther));
+  if (rawThis < 0 && rawOther > 0) return round2(Math.min(0, rawThis + rawOther));
+  return rawThis;
+}
 
 function billShareForSection(
   bill:   BillResponse,
@@ -627,21 +646,16 @@ function billShareForSection(
   const jama = sectionJamaForBill(bill, type, ledger);
 
   if (isMixedBill(bill)) {
-    const totalAmount = bill.totalAmount ?? 0;
-    const amount = type === 'COW' ? (bill.cowTotalAmount ?? 0) : (bill.buffaloTotalAmount ?? 0);
-    const ratio  = totalAmount > 0 ? amount / totalAmount : 0;
-    const liters = type === 'COW' ? (bill.cowTotalLiters ?? 0) : (bill.buffaloTotalLiters ?? 0);
+    const fig       = mixedSectionFigures(bill, type, ledger);
+    const otherType = type === 'COW' ? 'BUFFALO' : 'COW';
+    const o         = mixedSectionFigures(bill, otherType, ledger);
 
-    const saving  = round2((bill.savingDeduction  ?? 0) * ratio);
-    const advance = round2((bill.advanceDeduction ?? 0) * ratio);
-    const other   = round2((bill.otherDeductions  ?? 0) * ratio);
+    const dene = settleAcrossSections(
+      round2(fig.net - fig.jama),
+      round2(o.net   - o.jama),
+    );
 
-    const deduct  = round2(saving + advance + other);
-    const net     = round2(amount - deduct - SADILVAR_AMOUNT);
-
-    const dene = round2(net - jama);
-
-    return { liters, amount, deduct, net, saving, advance, other, jama, dene };
+    return { ...fig, dene };
   }
 
   const saving  = bill.savingDeduction  ?? 0;
@@ -938,7 +952,7 @@ function buildPaymentRegisterPage(
 </div>`;
 }
 
-// ─── core renderer ────────────────────────────────────────────────────────────
+// ─── core renderer 
 
 async function htmlPagesToPdf(pages: string[], fileName: string): Promise<void> {
   const html2canvas = (await import('html2canvas')).default;
@@ -1044,8 +1058,6 @@ async function htmlPagesToPdf(pages: string[], fileName: string): Promise<void> 
 
   doc.save(fileName);
 }
-
-// ─── Public: Bills PDF ───────────────────────────────────────────────────────
 
 const BILLS_PER_PAGE = 3;
 const PAGE_INNER_HEIGHT = 1095;
@@ -1159,7 +1171,6 @@ export async function generateBillsPDF(
   );
 }
 
-// ─── Public: Payment Register PDF ────────────────────────────────────────────
 
 export async function generatePaymentRegisterPDF(
   bills:         BillResponse[],
