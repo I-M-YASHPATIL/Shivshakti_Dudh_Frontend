@@ -2,7 +2,7 @@ import axios from 'axios';
 import type {
   Branch, Farmer, FatRate, MilkEntryRequest, MilkEntryResponse,
   FatLookupResponse, BillResponse, BillGenerateRequest, AnimalType,
-  LedgerEntryRequest, LedgerResponse
+  LedgerEntryRequest, LedgerResponse, LagwadType
 } from '../types/dairyTypes';
 
 const api = axios.create({
@@ -74,9 +74,6 @@ export const fatRateAPI = {
   delete: (branchCode: string, id: number) =>
     api.delete(`/${branchCode}/fat-rates/${id}`),
 
-  // ─── FIXED: removed duplicate 'animalType' param and stray 'p0'; now matches
-  // the call site fatRateAPI.lookup(branchCode, fatVal, animalType, liters, snfVal)
-  // and actually sends snf to the backend.
   lookup: (branchCode: string, fat: number, animalType: AnimalType, liters?: number, snf?: number) =>
     api.post<FatLookupResponse>(`/${branchCode}/fat-rates/lookup`, {
       fat,
@@ -174,12 +171,24 @@ export const ledgerAPI = {
   deleteEntry: (branchCode: string, farmerNumber: number, entryId: number) =>
     api.delete<LedgerResponse>(`/${branchCode}/ledger/${farmerNumber}/${entryId}`).then(r => r.data),
 
-  // Looks up the milk bill for a farmer for a given period (e.g. 01/09/2026 -
-  // 10/09/2026) so its net amount can be shown/used as the जमा value.
   lookupBill: (branchCode: string, farmerNumber: number, from: string, to: string) =>
     api.get<BillResponse>(`/${branchCode}/ledger/${farmerNumber}/bill-lookup`, {
       params: { from, to },
     }).then(r => r.data),
+};
+
+export const lagwadTypeAPI = {
+  getAll: (branchCode: string) =>
+    api.get<LagwadType[]>(`/${branchCode}/lagwad-types`).then(r => r.data),
+
+  create: (branchCode: string, data: LagwadType) =>
+    api.post<LagwadType>(`/${branchCode}/lagwad-types`, data).then(r => r.data),
+
+  update: (branchCode: string, id: number, data: LagwadType) =>
+    api.put<LagwadType>(`/${branchCode}/lagwad-types/${id}`, data).then(r => r.data),
+
+  delete: (branchCode: string, id: number) =>
+    api.delete(`/${branchCode}/lagwad-types/${id}`),
 };
 
 export default api;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { milkEntryAPI, farmerAPI, billAPI } from '../services/api';
+import { milkEntryAPI, farmerAPI, billAPI, ledgerAPI } from '../services/api';
 import { useBranch } from '../pages/Branchcontext';
 import type { MilkEntryResponse, Farmer, BillResponse } from '../types/dairyTypes';
 import { format, getDaysInMonth } from 'date-fns';
@@ -8,7 +8,6 @@ import {
   TrendingUp, FileText, RefreshCw, PiggyBank,
 } from 'lucide-react';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Period {
   label:     string;
@@ -34,6 +33,8 @@ interface PeriodStats {
   savingDeduction: number;
   netAmount:       number;
   billFound:       boolean;
+  lagwadAmount:    number;   
+  lagwadItems:     string[];  
 }
 
 const MARATHI_MONTHS = [
@@ -70,13 +71,17 @@ function matchBill(bill: BillResponse, period: Period): boolean {
   return bf <= period.endDate && bt >= period.startDate;
 }
 
-// helper — floor rupee amount to integer string
+function lagwadLabel(note?: string | null): string {
+  if (!note) return '';
+  const m = note.match(/^(.+?)\s×\s([\d.]+)(?:\s([^\s(]+))?\s*\(₹[\d.]+\/([^)]*)\)/);
+  if (!m) return '';
+  return `${m[1].trim()} × ${m[2]} ${(m[3] || m[4] || '').trim()}`.trim();
+}
+
 const rs = (v: number) => `₹${Math.floor(v)}`;
 
-// सादिलवार — प्रत्येक सक्रिय कालावधी (bill) मागे कापले जाणारे स्थिर शुल्क
 const SADILVAR = 6;
 
-// ─── Component ────────────────────────────────────────────────────────────────
 export default function FarmerYearlyReport() {
   const { activeBranchCode } = useBranch();
 
@@ -111,17 +116,18 @@ export default function FarmerYearlyReport() {
     setLoading(true);
     setFetched(false);
     try {
-      // `.number` on Farmer is typed as a required string, so `??` alone
-      // won't fall through to `.farmerNumber` for TS — wrap in Number() to
-      // guarantee a numeric farmerNum regardless of which field is populated.
+    
       const farmerNum = Number(selectedFarmer.number ?? selectedFarmer.farmerNumber);
 
-      const [entries, bills] = await Promise.all([
+      const [entries, bills, ledger] = await Promise.all([
         selectedFarmer.id
           ? milkEntryAPI.getYearlyByFarmerId(activeBranchCode, selectedFarmer.id, startDate, endDate)
           : milkEntryAPI.getYearlyByFarmerNumber(activeBranchCode, farmerNum, startDate, endDate),
         billAPI.getForFarmer(activeBranchCode, farmerNum),
+        ledgerAPI.get(activeBranchCode, farmerNum).catch(() => null),
       ]);
+
+      const lagwadEntries = (ledger?.entries ?? []).filter(e => e.type === 'LAGAVAD');
 
       const yearBills = bills.filter(b => {
         const bf = String(b.fromDate ?? '');
@@ -143,6 +149,11 @@ export default function FarmerYearlyReport() {
         const bill      = yearBills.find(b => matchBill(b, period));
         const billFound = !!bill;
 
+        const pl = lagwadEntries.filter(e => {
+          const d = String(e.entryDate ?? '').slice(0, 10);
+          return d >= period.startDate && d <= period.endDate;
+        });
+
         return {
           period,
           entries:         pe,
@@ -161,6 +172,8 @@ export default function FarmerYearlyReport() {
           savingDeduction: Number(bill?.savingDeduction ?? 0),
           netAmount:       Number(bill?.netAmount       ?? sumA(pe)),
           billFound,
+          lagwadAmount:    pl.reduce((a, e) => a + Number(e.amount ?? 0), 0),
+          lagwadItems:     pl.map(e => lagwadLabel(e.note)).filter(Boolean),
         };
       });
 
@@ -183,14 +196,15 @@ export default function FarmerYearlyReport() {
     bufAmt:  periodStats.reduce((a, s) => a + s.bufAmount,       0),
     saving:  periodStats.reduce((a, s) => a + s.savingDeduction, 0),
     net:     periodStats.reduce((a, s) => a + s.netAmount,       0),
-    entries: periodStats.reduce((a, s) => a + s.entryCount,      0),
+    lagwad:  periodStats.reduce((a, s) => a + s.lagwadAmount,    0),
+entries: periodStats.reduce((a, s) => a + s.entryCount,      0),
     active:  periodStats.filter(s      => s.entryCount > 0).length,
   };
 
   // ── CSV Export ────────────────────────────────────────────────────────────────
   const exportCSV = () => {
     if (!periodStats.length) return;
-    const hdr = 'कालावधी,नोंदी,एकूण दूध (ली.),गाय (ली.),म्हैस (ली.),एकूण रक्कम (₹),गाय रक्कम (₹),म्हैस रक्कम (₹),बचत वजावट (₹),निव्वळ देय (₹)';
+    const hdr = 'कालावधी,नोंदी,एकूण दूध (ली.),गाय (ली.),म्हैस (ली.),एकूण रक्कम (₹),गाय रक्कम (₹),म्हैस रक्कम (₹),बचत वजावट (₹),निव्वळ देय (₹),लागवड (₹)';
     const rows = periodStats.map(s =>
       [
         s.period.label,
@@ -203,9 +217,10 @@ export default function FarmerYearlyReport() {
         Math.floor(s.bufAmount),
         Math.floor(s.savingDeduction),
         Math.floor(s.netAmount),
+        Math.floor(s.lagwadAmount),
       ].join(',')
     );
-    rows.push(`वार्षिक एकूण,${grand.entries},${grand.liters.toFixed(2)},${grand.cowL.toFixed(2)},${grand.bufL.toFixed(2)},${Math.floor(grand.amount)},${Math.floor(grand.cowAmt)},${Math.floor(grand.bufAmt)},${Math.floor(grand.saving)},${Math.floor(grand.net)}`);
+    rows.push(`वार्षिक एकूण,${grand.entries},${grand.liters.toFixed(2)},${grand.cowL.toFixed(2)},${grand.bufL.toFixed(2)},${Math.floor(grand.amount)},${Math.floor(grand.cowAmt)},${Math.floor(grand.bufAmt)},${Math.floor(grand.saving)},${Math.floor(grand.net)},${Math.floor(grand.lagwad)}`);
     const blob = new Blob([hdr + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const a    = Object.assign(document.createElement('a'), { href: url, download: `${selectedFarmer?.name}_${yearLabel}.csv` });
@@ -213,16 +228,13 @@ export default function FarmerYearlyReport() {
     URL.revokeObjectURL(url);
   };
 
-  // ── Per-type (cow / buffalo) table renderer ────────────────────────────────────
-  const renderTypeTable = (type: 'COW' | 'BUFFALO') => {
+  const renderTypeTable = (type: 'COW' | 'BUFFALO', showLagwad: boolean) => {
+    const colCount = showLagwad ? 8 : 7;
     const isCow      = type === 'COW';
     const getLiters  = (s: PeriodStats) => (isCow ? s.cowLiters : s.bufLiters);
     const getAmount  = (s: PeriodStats) => (isCow ? s.cowAmount : s.bufAmount);
     const getCount   = (s: PeriodStats) => (isCow ? s.cowCount  : s.bufCount);
-    // कापत / निव्वळ देणे बिलात गाय-म्हैस वेगळे दिलेले नसतात — त्या कालावधीतील
-    // या प्रकाराच्या रकमेच्या प्रमाणात (share) वाटून काढले जाते.
     const getSaving  = (s: PeriodStats) => (s.totalAmount > 0 ? s.savingDeduction * (getAmount(s) / s.totalAmount) : 0);
-    // सादिलवार — या प्रकाराच्या नोंदी असलेल्या प्रत्येक सक्रिय कालावधी मागे ₹5
     const getSadilvar = (s: PeriodStats) => (getCount(s) > 0 ? SADILVAR : 0);
     const getNet     = (s: PeriodStats) => getAmount(s) - getSaving(s) - getSadilvar(s);
 
@@ -234,7 +246,7 @@ export default function FarmerYearlyReport() {
     const typeSadilvar = periodStats.reduce((a, s) => a + getSadilvar(s), 0);
     const typeNet    = periodStats.reduce((a, s) => a + getNet(s),    0);
 
-    if (typeCount === 0) return null; // farmer has no entries of this type for the year
+    if (typeCount === 0) return null; 
 
     const headerBg  = isCow ? 'bg-yellow-600' : 'bg-indigo-700';
     const footBg    = isCow ? 'bg-yellow-700' : 'bg-indigo-800';
@@ -273,6 +285,11 @@ export default function FarmerYearlyReport() {
                 <th className="px-3 py-3 text-right">
                   निव्वळ देणे<br/><span className="font-normal text-gray-400">(₹)</span>
                 </th>
+                {showLagwad && (
+                  <th className="px-3 py-3 text-right">
+                    लागवड<br/><span className="font-normal text-gray-400">(₹)</span>
+                  </th>
+                )}
               </tr>
             </thead>
 
@@ -286,7 +303,7 @@ export default function FarmerYearlyReport() {
                   <React.Fragment key={s.period.startDate}>
                     {isNewMonth && (
                       <tr className="bg-gray-50 border-t-2 border-gray-100">
-                        <td colSpan={7} className={`px-4 py-1.5 text-xs font-bold tracking-wider ${monthText}`}>
+                        <td colSpan={colCount} className={`px-4 py-1.5 text-xs font-bold tracking-wider ${monthText}`}>
                           {s.period.label.split('–')[0].trim().replace(/^\d+\s/, '')} महिना
                         </td>
                       </tr>
@@ -326,6 +343,20 @@ export default function FarmerYearlyReport() {
                             : <span className="text-gray-400 font-normal text-xs">बिल नाही</span>
                         }
                       </td>
+                      {showLagwad && (
+                        <td className="px-3 py-2.5 text-right text-purple-700">
+                          {s.lagwadAmount > 0 ? (
+                            <>
+                              <div className="font-semibold">{rs(s.lagwadAmount)}</div>
+                              {s.lagwadItems.map((t, i) => (
+                                <div key={i} className="text-[11px] text-gray-500 whitespace-nowrap">{t}</div>
+                              ))}
+                            </>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   </React.Fragment>
                 );
@@ -341,6 +372,7 @@ export default function FarmerYearlyReport() {
                 <td className="px-3 py-3 text-right">{rs(typeSaving)}</td>
                 <td className="px-3 py-3 text-right">{rs(typeSadilvar)}</td>
                 <td className="px-3 py-3 text-right">{rs(typeNet)}</td>
+                {showLagwad && <td className="px-3 py-3 text-right">{rs(grand.lagwad)}</td>}
               </tr>
             </tfoot>
           </table>
@@ -349,7 +381,6 @@ export default function FarmerYearlyReport() {
     );
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto space-y-6">
 
@@ -472,7 +503,7 @@ export default function FarmerYearlyReport() {
           </div>
 
           {/* Active period / entries sub-row */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
               <p className="text-xs font-semibold text-blue-500">एकूण नोंदी</p>
               <p className="text-2xl font-bold text-blue-800 mt-1">{grand.entries}</p>
@@ -480,6 +511,10 @@ export default function FarmerYearlyReport() {
             <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
               <p className="text-xs font-semibold text-amber-500">सक्रिय कालावधी</p>
               <p className="text-2xl font-bold text-amber-800 mt-1">{grand.active} / 36</p>
+            </div>
+            <div className="bg-purple-50 border border-purple-100 rounded-2xl p-4">
+              <p className="text-xs font-semibold text-purple-500">एकूण लागवड</p>
+              <p className="text-2xl font-bold text-purple-800 mt-1">{rs(grand.lagwad)}</p>
             </div>
           </div>
 
@@ -490,8 +525,8 @@ export default function FarmerYearlyReport() {
           </div>
 
           {/* Separate cow / buffalo reports */}
-          {renderTypeTable('COW')}
-          {renderTypeTable('BUFFALO')}
+          {renderTypeTable('COW', grand.cowL > 0)}
+          {renderTypeTable('BUFFALO', grand.cowL === 0)}
         </>
       )}
 

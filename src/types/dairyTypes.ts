@@ -1,7 +1,5 @@
 export type AnimalType = 'COW' | 'BUFFALO';
 
-// A farmer's registered classification - a farmer can supply BOTH milk types,
-// in which case the milk type is chosen per entry instead of being fixed.
 export type FarmerAnimalType = 'COW' | 'BUFFALO' | 'BOTH';
 
 // ─── Branch ───────────────────────────────────────────────────────────────────
@@ -80,9 +78,7 @@ export interface LedgerEntryRequest {
   entryDate:     string;
   billFromDate?: string;
   billToDate?:   string;
-  // For a JAMA entry belonging to a farmer who supplies BOTH cow and buffalo
-  // milk: which section (गाय / म्हैस) this जमा should count against in the
-  // payment register, instead of being split proportionally.
+
   milkType?:     AnimalType | 'BOTH';
   note?:         string;
 }
@@ -153,4 +149,11 @@ export interface BillResponse {
 
   isPaid:             boolean;
   entries?:           MilkEntryResponse[];
+}
+
+export interface LagwadType {
+  id?:   number;
+  name:  string;  
+  price: number;   
+  unit?: string;  
 }

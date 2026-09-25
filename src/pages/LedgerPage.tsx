@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { ledgerAPI, farmerAPI } from "../services/api";
+import { ledgerAPI, farmerAPI, lagwadTypeAPI } from "../services/api";
 import { useBranch } from "../pages/Branchcontext";
 import type {
   LedgerResponse,
   LedgerEntryType,
   BillResponse,
   Farmer,
+  LagwadType,
 } from "../types/dairyTypes";
 import toast from "react-hot-toast";
 import {
@@ -57,12 +58,6 @@ function getMonthPeriods(year: number, month: number): Period[] {
   ];
 }
 
-/**
- * निव्वळ रक्कम मोजतो — PDF बिलाप्रमाणेच.
- * API चा `netAmount` सादिलवार वगळतो, त्यामुळे तो वापरत नाही.
- * तसेच mixed bill (गाय + म्हैस) असल्यास प्रत्येक प्रकारासाठी स्वतंत्र ₹6 सादिलवार
- * वजा केला जातो (म्हणजे दोन्हीसाठी एकूण ₹10).
- */
 function netAmountForMilkType(
   bill: BillResponse,
   choice: MilkTypeChoice,
@@ -124,6 +119,17 @@ const typeLabel: Record<LedgerEntryType, string> = {
   LAGAVAD: "लागवड",
   JAMA: "जमा",
 };
+
+const animalBadgeStyle = (a?: string) =>
+  a === "COW"
+    ? "bg-yellow-100 text-yellow-800"
+    : a === "BOTH"
+      ? "bg-green-100 text-green-800"
+      : "bg-indigo-100 text-indigo-800";
+const animalBadgeIcon = (a?: string) =>
+  a === "COW" ? "🐄" : a === "BOTH" ? "🐄🐃" : "🐃";
+const animalBadgeLabel = (a?: string) =>
+  a === "COW" ? "🐄 गाय" : a === "BOTH" ? "🐄🐃 गाय व म्हैस" : "🐃 म्हैस";
 
 const typeStyle: Record<LedgerEntryType, string> = {
   UCHAL: "bg-red-100 text-red-800",
@@ -203,6 +209,24 @@ export default function LedgerPage() {
   const [milkTypeForJama, setMilkTypeForJama] =
     useState<MilkTypeChoice>("BOTH");
 
+  // लागवड-only: लागवड प्रकार (Lagwad Types page मधून) + संख्या (नग)
+  const [lagwadTypes, setLagwadTypes] = useState<LagwadType[]>([]);
+  const [selLagwadId, setSelLagwadId] = useState<number | null>(null);
+  const [lagwadQty, setLagwadQty] = useState("");
+
+  useEffect(() => {
+    if (!activeBranchCode) {
+      setLagwadTypes([]);
+      return;
+    }
+    lagwadTypeAPI
+      .getAll(activeBranchCode)
+      .then(setLagwadTypes)
+      .catch(() => setLagwadTypes([]));
+  }, [activeBranchCode]);
+
+  const selLagwad = lagwadTypes.find((t) => t.id === selLagwadId) ?? null;
+
   const periods = getMonthPeriods(selYear, selMonth);
   const activePeriod = selPeriod != null ? periods[selPeriod] : null;
 
@@ -237,9 +261,33 @@ export default function LedgerPage() {
     setMilkTypeForJama("BOTH");
   };
 
+  const resetLagwad = () => {
+    setSelLagwadId(null);
+    setLagwadQty("");
+  };
+
+  // प्रकार × संख्या = रक्कम (आपोआप भरली जाते, हवे तर बदलता येते)
+  const recalcLagwadAmount = (t: LagwadType | null, qty: string) => {
+    const q = parseFloat(qty);
+    if (t && q > 0) setAmount(String(Math.round(t.price * q)));
+    else setAmount("");
+  };
+
+  const handleLagwadSelect = (idStr: string) => {
+    const id = idStr ? Number(idStr) : null;
+    setSelLagwadId(id);
+    recalcLagwadAmount(lagwadTypes.find((t) => t.id === id) ?? null, lagwadQty);
+  };
+
+  const handleLagwadQty = (qty: string) => {
+    setLagwadQty(qty);
+    recalcLagwadAmount(selLagwad, qty);
+  };
+
   const handleTypeChange = (t: LedgerEntryType) => {
     setType(t);
     if (t !== "JAMA") resetBillLookup();
+    if (t !== "LAGAVAD") resetLagwad();
   };
 
   const handleBillLookup = async (period: Period) => {
@@ -291,6 +339,18 @@ export default function LedgerPage() {
       toast.error("दिनांक टाका");
       return;
     }
+    // लागवड: निवडलेला प्रकार + संख्या टिपेत जतन होते
+    let finalNote = note.trim();
+    if (type === "LAGAVAD" && selLagwad) {
+      const qty = parseFloat(lagwadQty);
+      if (!qty || qty <= 0) {
+        toast.error("संख्या (नग) टाका");
+        return;
+      }
+      const lagwadText = `${selLagwad.name} × ${qty}${selLagwad.unit ? " " + selLagwad.unit : ""} (₹${selLagwad.price}/${selLagwad.unit || "नग"})`;
+      finalNote = finalNote ? `${lagwadText} — ${finalNote}` : lagwadText;
+    }
+
     setSaving(true);
     try {
       const updated = await ledgerAPI.addEntry(
@@ -304,17 +364,15 @@ export default function LedgerPage() {
             type === "JAMA" && activePeriod ? activePeriod.fromDate : undefined,
           billToDate:
             type === "JAMA" && activePeriod ? activePeriod.toDate : undefined,
-          // Tag which section (गाय / म्हैस / दोन्ही) this जमा belongs to, so
-          // the payment register can credit it to the right column instead
-          // of splitting it proportionally.
           milkType: type === "JAMA" ? milkTypeForJama : undefined,
-          note: note.trim() || undefined,
+          note: finalNote || undefined,
         },
       );
       setLedger(updated);
       setAmount("");
       setNote("");
       resetBillLookup();
+      resetLagwad();
       toast.success(`${typeLabel[type]} नोंदवली`);
     } catch (err: any) {
       toast.error(err.response?.data?.message || "नोंद करता आली नाही");
@@ -428,13 +486,9 @@ export default function LedgerPage() {
                       </span>
                       <span className="text-gray-700 truncate">{f.name}</span>
                       <span
-                        className={`ml-auto shrink-0 text-[11px] px-2 py-0.5 rounded-full font-semibold ${
-                          f.animalType === "COW"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-indigo-100 text-indigo-800"
-                        }`}
+                        className={`ml-auto shrink-0 text-[11px] px-2 py-0.5 rounded-full font-semibold ${animalBadgeStyle(f.animalType)}`}
                       >
-                        {f.animalType === "COW" ? "🐄" : "🐃"}
+                        {animalBadgeIcon(f.animalType)}
                       </span>
                     </button>
                   ))
@@ -462,13 +516,9 @@ export default function LedgerPage() {
                 #{ledger.farmerNumber} — {ledger.farmerName}
               </p>
               <span
-                className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                  ledger.animalType === "COW"
-                    ? "bg-yellow-100 text-yellow-800"
-                    : "bg-indigo-100 text-indigo-800"
-                }`}
+                className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold ${animalBadgeStyle(ledger.animalType)}`}
               >
-                {ledger.animalType === "COW" ? "🐄 गाय" : "🐃 म्हैस"}
+                {animalBadgeLabel(ledger.animalType)}
               </span>
             </div>
             <div className="text-right">
@@ -652,6 +702,71 @@ export default function LedgerPage() {
                           ).toLocaleString("en-IN")}
                         </b>
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── लागवड: प्रकार + संख्या (नग) ── */}
+              {type === "LAGAVAD" && (
+                <div className="md:col-span-2 bg-orange-50 border border-orange-200 rounded-xl p-4">
+                  <label className="block text-xs font-semibold text-orange-800 mb-2">
+                    लागवड प्रकार निवडा — रक्कम आपोआप दिसेल
+                  </label>
+
+                  {lagwadTypes.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      अजून लागवड प्रकार जोडलेले नाहीत. डावीकडील{" "}
+                      <b>“लागवड प्रकार”</b> पानावर जाऊन प्रकार व किंमत जोडा.
+                      किंवा खाली रक्कम स्वतः टाका.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">
+                          लागवड प्रकार
+                        </label>
+                        <select
+                          value={selLagwadId ?? ""}
+                          onChange={(e) => handleLagwadSelect(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold bg-white focus:ring-2 focus:ring-orange-400 outline-none"
+                        >
+                          <option value="">— प्रकार निवडा —</option>
+                          {lagwadTypes.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} — ₹{t.price}
+                              {t.unit ? ` / ${t.unit}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">
+                          संख्या (नग){selLagwad?.unit ? ` — ${selLagwad.unit}` : ""}
+                        </label>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          placeholder="0"
+                          value={lagwadQty}
+                          onChange={(e) => handleLagwadQty(e.target.value)}
+                          disabled={!selLagwad}
+                          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-orange-400 outline-none disabled:bg-gray-100"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {selLagwad && parseFloat(lagwadQty) > 0 && (
+                    <div className="mt-3 text-sm bg-white rounded-xl border border-orange-100 p-3">
+                      {selLagwad.name}: ₹{selLagwad.price} × {lagwadQty} ={" "}
+                      <b className="text-orange-700">
+                        ₹
+                        {Math.round(
+                          selLagwad.price * parseFloat(lagwadQty),
+                        ).toLocaleString("en-IN")}
+                      </b>
                     </div>
                   )}
                 </div>

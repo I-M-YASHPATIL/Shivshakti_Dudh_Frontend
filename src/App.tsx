@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Milk, Users, FileText, Settings, BarChart3, Menu, Building2, BookOpen, Wallet, LogOut } from 'lucide-react';
+import { Milk, Users, FileText, Settings, BarChart3, Menu, Building2, BookOpen, Wallet, LogOut, ClipboardList, Leaf } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import { BranchProvider, useBranch } from './pages/Branchcontext';
 import BranchSelector from './pages/Branchselector ';
@@ -11,9 +11,11 @@ import FatRatesPage from './pages/FatRatesPage';
 import BranchSetupPage from './pages/Branchsetuppage';
 import FarmerYearlyReport from './pages/Farmeryearlyreport';
 import LedgerPage from './pages/LedgerPage';
+import LagwadTypesPage from './pages/Lagwadtypepage';
+import LagwadReportPage from './pages/Lagwadreportpage';
 import LoginPage, { type UserRole } from './pages/LoginPage';
 
-type Page = 'dashboard' | 'entry' | 'farmers' | 'bills' | 'yearly' | 'rates' | 'branches' | 'ledger';
+type Page = 'dashboard' | 'entry' | 'farmers' | 'bills' | 'yearly' | 'rates' | 'branches' | 'ledger' | 'lagwad' | 'lagwadreport';
 
 const allNavItems = [
   { id: 'dashboard' as Page, label: 'Dashboard',      labelMr: 'डॅशबोर्ड',     icon: <BarChart3  size={20} /> },
@@ -21,16 +23,18 @@ const allNavItems = [
   { id: 'farmers'   as Page, label: 'Productors',        labelMr: 'उत्पादक',        icon: <Users     size={20} /> },
   { id: 'bills'     as Page, label: 'Bills',          labelMr: 'बिले',           icon: <FileText  size={20} /> },
   { id: 'ledger'    as Page, label: 'Ledger',         labelMr: 'उचल/लागवड',    icon: <Wallet    size={20} /> },
+  { id: 'lagwad'    as Page, label: 'Lagwad Types',   labelMr: 'लागवड प्रकार',   icon: <Leaf size={20} /> },
+  { id: 'lagwadreport' as Page, label: 'Lagwad Report', labelMr: 'लागवड अहवाल', icon: <ClipboardList size={20} /> },
   { id: 'yearly'    as Page, label: 'Yearly Report',  labelMr: 'वार्षिक अहवाल', icon: <BookOpen  size={20} /> },
   { id: 'rates'     as Page, label: 'Fat Rates',      labelMr: 'फॅट दर',        icon: <Settings  size={20} /> },
   { id: 'branches'  as Page, label: 'Branches',       labelMr: 'शाखा',           icon: <Building2 size={20} /> },
 ];
 
 // Limited-access accounts (the milk-society phone login) only ever see these two tabs.
-const LIMITED_PAGES: Page[] = ['dashboard', 'entry'];
+const LIMITED_PAGES: Page[] = [ 'entry'];
 
 function AppInner({ role, onLogout }: { role: UserRole; onLogout: () => void }) {
-  const [page,        setPage]        = useState<Page>('dashboard');
+const [page,        setPage]        = useState<Page>(role === 'limited' ? 'entry' : 'dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { loading, branches } = useBranch();
 
@@ -38,18 +42,15 @@ function AppInner({ role, onLogout }: { role: UserRole; onLogout: () => void }) 
     ? allNavItems.filter(item => LIMITED_PAGES.includes(item.id))
     : allNavItems;
 
-  // Auto-redirect to Branch setup if no branches exist (admin only — limited accounts have no branches tab)
   useEffect(() => {
     if (role === 'admin' && !loading && branches.length === 0) {
       setPage('branches');
     }
   }, [role, loading, branches.length]);
 
-  // Guard against a limited account ever landing on a page it shouldn't see hii yash
-  
-  useEffect(() => {
+ useEffect(() => {
     if (role === 'limited' && !LIMITED_PAGES.includes(page)) {
-      setPage('dashboard');
+      setPage('entry');
     }
   }, [role, page]);
 
@@ -60,6 +61,8 @@ function AppInner({ role, onLogout }: { role: UserRole; onLogout: () => void }) 
       case 'farmers':   return <FarmersPage />;
       case 'bills':     return <BillsPage />;
       case 'ledger':    return <LedgerPage />;
+      case 'lagwad':    return <LagwadTypesPage />;
+      case 'lagwadreport': return <LagwadReportPage />;
       case 'yearly':    return <FarmerYearlyReport />;
       case 'rates':     return <FatRatesPage />;
       case 'branches':  return <BranchSetupPage />;
@@ -166,7 +169,7 @@ function AppInner({ role, onLogout }: { role: UserRole; onLogout: () => void }) 
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-gray-400">
             <div className="text-center">
-              <div className="text-4xl mb-3">🌾</div>
+              <div className="text-4xl mb-3">🥛</div>
               <p className="font-semibold">लोड होत आहे...</p>
             </div>
           </div>

@@ -1,11 +1,6 @@
 import { useState } from 'react';
 import { Milk, Lock, User, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
-// NOTE: This is a simple client-side gate, not real authentication.
-// The credentials below ship inside the JS bundle and can be read by
-// anyone who opens dev tools, and the backend API itself still accepts
-// requests without any login. Treat this as a "keep casual visitors out"
-// screen only — for real protection, add auth on the backend.
 const ADMIN_USERNAME = 'Shivshakti';
 const ADMIN_PASSWORD = '6510';
 
@@ -30,7 +25,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     setError('');
     setSubmitting(true);
 
-    // Small delay so the button/loading state actually registers for the user
     setTimeout(() => {
       const enteredUsername = username.trim();
 
@@ -52,7 +46,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
   return (
     <div className="min-h-screen w-full flex bg-amber-50">
 
-      {/* ── Brand panel — hidden on small screens ───────────────────────── */}
       <div
         className="hidden md:flex md:w-[44%] lg:w-[40%] relative flex-col justify-between
                    bg-gradient-to-br from-green-800 via-green-900 to-green-950
