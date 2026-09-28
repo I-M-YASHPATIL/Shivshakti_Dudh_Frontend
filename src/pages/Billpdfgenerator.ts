@@ -47,7 +47,6 @@ function computeNetAmount(bill: BillResponse): number {
   return round2((bill.totalAmount ?? 0) - totalDeductions(bill));
 }
 
-/** Morning / evening totals derived from the entries. */
 function computeSessionTotals(entries: MilkEntryResponse[]) {
   const morning = entries.filter(e => e.session === 'MORNING');
   const evening = entries.filter(e => e.session === 'EVENING');
@@ -63,23 +62,62 @@ function computeLedgerSummary(
   ledger: LedgerResponse | undefined,
   fromDate: string,
   toDate: string,
-): { magilBaki: number; uchal: number; lagavad: number; jama: number; baki: number } {
+): {
+  magilBaki: number;
+  uchal: number;
+  lagavad: number;
+  lagavadDetails: { date: string; amount: number }[];
+  totalBaki: number;     
+  jama: number;
+  shillakhBaki: number;   
+  baki: number;          
+} {
   if (!ledger || !ledger.entries?.length) {
-    return { magilBaki: 0, uchal: 0, lagavad: 0, jama: 0, baki: 0 };
+    return {
+      magilBaki: 0,
+      uchal: 0,
+      lagavad: 0,
+      lagavadDetails: [],
+      totalBaki: 0,
+      jama: 0,
+      shillakhBaki: 0,
+      baki: 0,
+    };
   }
 
   const beforePeriod = ledger.entries.filter(e => e.entryDate < fromDate);
-  const magilBaki = beforePeriod.length ? beforePeriod[beforePeriod.length - 1].balanceAfter : 0;
+  const magilBaki = beforePeriod.length
+    ? beforePeriod[beforePeriod.length - 1].balanceAfter
+    : 0;
 
-  const inRange = ledger.entries.filter(e => e.entryDate >= fromDate && e.entryDate <= toDate);
+  const inRange = ledger.entries.filter(
+    e => e.entryDate >= fromDate && e.entryDate <= toDate,
+  );
+
   const uchal   = inRange.filter(e => e.type === 'UCHAL').reduce((s, e) => s + (e.amount ?? 0), 0);
   const lagavad = inRange.filter(e => e.type === 'LAGAVAD').reduce((s, e) => s + (e.amount ?? 0), 0);
   const jama    = inRange.filter(e => e.type === 'JAMA').reduce((s, e) => s + (e.amount ?? 0), 0);
 
+  const lagavadDetails = inRange
+    .filter(e => e.type === 'LAGAVAD')
+    .map(e => ({ date: e.entryDate, amount: e.amount ?? 0 }));
+
+  const totalBaki    = round2(magilBaki + uchal + lagavad);
+  const shillakhBaki = round2(totalBaki - jama);
+
   const upToDate = ledger.entries.filter(e => e.entryDate <= toDate);
   const baki = upToDate.length ? upToDate[upToDate.length - 1].balanceAfter : 0;
 
-  return { magilBaki, uchal, lagavad, jama, baki };
+  return {
+    magilBaki,
+    uchal,
+    lagavad,
+    lagavadDetails,
+    totalBaki,
+    jama,
+    shillakhBaki,
+    baki,
+  };
 }
 
 function sectionJamaForBill(
@@ -319,7 +357,8 @@ const PAGE_CSS = `
     padding: 1px 3px !important;
     border-top: 0.5px dashed #666 !important;
     text-align: left !important;
-    white-space: nowrap !important;
+    white-space: normal !important;
+    word-break: break-word !important;
   }
   .nr td  {
     background: #fff !important;
@@ -469,8 +508,6 @@ function buildDayRows(
   }).join('');
 }
 
-// ─── bill card HTML ──────────────────────────────────────────────────────────
-
 function buildBillHtml(
   bill:         BillResponse,
   entries:      MilkEntryResponse[],
@@ -500,12 +537,7 @@ function buildBillHtml(
         : sectionJamaForBill(bill, 'COW', ledger))
     : 0;
 
-  let netDene = round2(netAmount - jamaForCard);
-  if (ledger && sectionType && sourceBill && isMixedBill(sourceBill)) {
-    const otherType = sectionType === 'COW' ? 'BUFFALO' : 'COW';
-    const o = mixedSectionFigures(sourceBill, otherType, ledger);
-    netDene = settleAcrossSections(netDene, round2(o.net - o.jama));
-  }
+  const netDene = round2(netAmount - jamaForCard);
 
 
   const animalLabel =
@@ -535,10 +567,16 @@ function buildBillHtml(
     ? computeLedgerSummary(ledger, bill.fromDate, bill.toDate)
     : null;
 
+    const lagvadDates = ledgerSummary?.lagavadDetails.length
+    ? ` (${ledgerSummary.lagavadDetails
+          .map(d => format(parseISO(d.date), 'dd/MM'))
+          .join(', ')})`
+    : '';
+
   const ledgerRow = ledgerSummary ? `
       <tr class="lr">
         <td colspan="${totalCols}">
-          मागील बाकी: <b>रु.${n(ledgerSummary.magilBaki)}</b>${SEP}उचल: <b>रु.${n(ledgerSummary.uchal)}</b>${SEP}लागवड: <b>रु.${n(ledgerSummary.lagavad)}</b>${SEP}जमा: <b>रु.${n(ledgerSummary.jama)}</b>${SEP}बाकी: <b>रु.${n(ledgerSummary.baki)}</b>
+          मागील बाकी: <b>रु.${n(ledgerSummary.magilBaki)}</b>${SEP}उचल: <b>रु.${n(ledgerSummary.uchal)}</b>${SEP}लागवड: <b>रु.${n(ledgerSummary.lagavad)}</b>${lagvadDates}${SEP}एकूण बाकी: <b>रु.${n(ledgerSummary.totalBaki)}</b>${SEP}जमा: <b>रु.${n(ledgerSummary.jama)}</b>
         </td>
       </tr>` : '';
 
@@ -548,6 +586,8 @@ function buildBillHtml(
           एकूण निव्वळ बिल (गाय + म्हैस) &nbsp;&nbsp; रु.${n(mixedSummary.totalNetBill)}${SEP}एकूण निव्वळ देणे &nbsp;&nbsp; रु.${nTrunc(mixedSummary.totalNetDene)}
         </td>
       </tr>` : '';
+
+  const showShillakh = !!ledgerSummary && Math.abs(ledgerSummary.shillakhBaki) > 0.005;
 
   const colgroupCols = hasSnf
     ? `<col style="width:42px">
@@ -603,39 +643,12 @@ function buildBillHtml(
       </tr>
       <tr class="nr">
         <td colspan="${totalCols}">
-          <b>निव्वळ बिल &nbsp;&nbsp; रु.${n(netAmount)}${SEP}निव्वळ देणे &nbsp;&nbsp; रु.${nTrunc(netDene)}</b>
+          <b>निव्वळ बिल &nbsp;&nbsp; रु.${n(netAmount)}${SEP}निव्वळ देणे &nbsp;&nbsp; रु.${nTrunc(netDene)}${showShillakh ? `${SEP}शिल्लक बाकी &nbsp;&nbsp; रु.${n(ledgerSummary!.shillakhBaki)}` : ''}</b>
         </td>
       </tr>${ledgerRow}${mixedRow}
     </tfoot>
   </table>
 </div>`;
-}
-
-function mixedSectionFigures(
-  bill:   BillResponse,
-  type:   'COW' | 'BUFFALO',
-  ledger?: LedgerResponse,
-) {
-  const totalAmount = bill.totalAmount ?? 0;
-  const amount = type === 'COW' ? (bill.cowTotalAmount ?? 0) : (bill.buffaloTotalAmount ?? 0);
-  const ratio  = totalAmount > 0 ? amount / totalAmount : 0;
-  const liters = type === 'COW' ? (bill.cowTotalLiters ?? 0) : (bill.buffaloTotalLiters ?? 0);
-
-  const saving  = round2((bill.savingDeduction  ?? 0) * ratio);
-  const advance = round2((bill.advanceDeduction ?? 0) * ratio);
-  const other   = round2((bill.otherDeductions  ?? 0) * ratio);
-
-  const deduct  = round2(saving + advance + other);
-  const net     = round2(amount - deduct - SADILVAR_AMOUNT);
-  const jama    = sectionJamaForBill(bill, type, ledger);
-
-  return { liters, amount, deduct, net, saving, advance, other, jama };
-}
-
-function settleAcrossSections(rawThis: number, rawOther: number): number {
-  if (rawThis > 0 && rawOther < 0) return round2(Math.max(0, rawThis + rawOther));
-  if (rawThis < 0 && rawOther > 0) return round2(Math.min(0, rawThis + rawOther));
-  return rawThis;
 }
 
 function billShareForSection(
@@ -646,16 +659,21 @@ function billShareForSection(
   const jama = sectionJamaForBill(bill, type, ledger);
 
   if (isMixedBill(bill)) {
-    const fig       = mixedSectionFigures(bill, type, ledger);
-    const otherType = type === 'COW' ? 'BUFFALO' : 'COW';
-    const o         = mixedSectionFigures(bill, otherType, ledger);
+    const totalAmount = bill.totalAmount ?? 0;
+    const amount = type === 'COW' ? (bill.cowTotalAmount ?? 0) : (bill.buffaloTotalAmount ?? 0);
+    const ratio  = totalAmount > 0 ? amount / totalAmount : 0;
+    const liters = type === 'COW' ? (bill.cowTotalLiters ?? 0) : (bill.buffaloTotalLiters ?? 0);
 
-    const dene = settleAcrossSections(
-      round2(fig.net - fig.jama),
-      round2(o.net   - o.jama),
-    );
+    const saving  = round2((bill.savingDeduction  ?? 0) * ratio);
+    const advance = round2((bill.advanceDeduction ?? 0) * ratio);
+    const other   = round2((bill.otherDeductions  ?? 0) * ratio);
 
-    return { ...fig, dene };
+    const deduct  = round2(saving + advance + other);
+    const net     = round2(amount - deduct - SADILVAR_AMOUNT);
+
+    const dene = round2(net - jama);
+
+    return { liters, amount, deduct, net, saving, advance, other, jama, dene };
   }
 
   const saving  = bill.savingDeduction  ?? 0;
@@ -952,7 +970,6 @@ function buildPaymentRegisterPage(
 </div>`;
 }
 
-// ─── core renderer 
 
 async function htmlPagesToPdf(pages: string[], fileName: string): Promise<void> {
   const html2canvas = (await import('html2canvas')).default;
@@ -1022,6 +1039,7 @@ async function htmlPagesToPdf(pages: string[], fileName: string): Promise<void> 
             .rt td, .rt th { overflow: visible !important; padding-top: 4px !important; }
             .rt th  { background: #fff !important; color: #000 !important; }
             .rgrand td { background: #fff !important; color: #000 !important; }
+            .lr td { white-space: normal !important; word-break: break-word !important; }
             .deduct-row {
               display: flex !important;
               justify-content: space-between !important;
@@ -1058,6 +1076,8 @@ async function htmlPagesToPdf(pages: string[], fileName: string): Promise<void> 
 
   doc.save(fileName);
 }
+
+// ─── Public: Bills PDF ───────────────────────────────────────────────────────
 
 const BILLS_PER_PAGE = 3;
 const PAGE_INNER_HEIGHT = 1095;
@@ -1171,6 +1191,7 @@ export async function generateBillsPDF(
   );
 }
 
+// ─── Public: Payment Register PDF ────────────────────────────────────────────
 
 export async function generatePaymentRegisterPDF(
   bills:         BillResponse[],
