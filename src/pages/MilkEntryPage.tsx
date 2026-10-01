@@ -294,7 +294,7 @@ export default function MilkEntryPage({ canEdit = true, canDelete = true }: Milk
             </label>
             <input
               id="farmerInput"
-              type="text"
+              type="number"
               value={farmerNum}
               onChange={(e) => {
                 setFarmerNum(e.target.value);
@@ -355,7 +355,7 @@ export default function MilkEntryPage({ canEdit = true, canDelete = true }: Milk
             </label>
             <input
               ref={litersRef}
-              type="text"
+              type="number"
               step="0.1"
               value={liters}
               onChange={(e) => setLiters(e.target.value)}
@@ -375,7 +375,7 @@ export default function MilkEntryPage({ canEdit = true, canDelete = true }: Milk
             </label>
             <input
               ref={fatRef}
-              type="text"
+              type="number"
               step="0.1"
               value={fat}
               onChange={(e) => setFat(e.target.value)}
@@ -403,7 +403,7 @@ export default function MilkEntryPage({ canEdit = true, canDelete = true }: Milk
             </label>
             <input
               ref={snfRef}
-              type="text"
+              type="number"
               step="0.1"
               value={snf}
               onChange={(e) => setSnf(e.target.value)}
