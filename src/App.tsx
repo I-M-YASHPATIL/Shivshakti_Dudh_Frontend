@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage';
 import MilkEntryPage from './pages/MilkEntryPage';
 import FarmersPage from './pages/FarmersPage';
 import BillsPage from './pages/BillsPage';
+import FarmerBillsPage from './pages/FarmerBillsPage';
 import FatRatesPage from './pages/FatRatesPage';
 import BranchSetupPage from './pages/Branchsetuppage';
 import FarmerYearlyReport from './pages/Farmeryearlyreport';
@@ -15,13 +16,14 @@ import LagwadTypesPage from './pages/Lagwadtypepage';
 import LagwadReportPage from './pages/Lagwadreportpage';
 import LoginPage, { type UserRole } from './pages/LoginPage';
 
-type Page = 'dashboard' | 'entry' | 'farmers' | 'bills' | 'yearly' | 'rates' | 'branches' | 'ledger' | 'lagwad' | 'lagwadreport';
+type Page = 'dashboard' | 'entry' | 'farmers' | 'bills' | 'farmerbills' | 'yearly' | 'rates' | 'branches' | 'ledger' | 'lagwad' | 'lagwadreport';
 
 const allNavItems = [
   { id: 'dashboard' as Page, label: 'Dashboard',      labelMr: 'डॅशबोर्ड',     icon: <BarChart3  size={20} /> },
   { id: 'entry'     as Page, label: 'Milk Entry',     labelMr: 'दूध नोंद',      icon: <Milk      size={20} /> },
   { id: 'farmers'   as Page, label: 'Productors',        labelMr: 'उत्पादक',        icon: <Users     size={20} /> },
   { id: 'bills'     as Page, label: 'Bills',          labelMr: 'बिले',           icon: <FileText  size={20} /> },
+  { id: 'farmerbills' as Page, label: 'Farmer Bills', labelMr: 'उत्पादक बिले', icon: <FileText size={20} /> },
   { id: 'ledger'    as Page, label: 'Ledger',         labelMr: 'उचल/लागवड',    icon: <Wallet    size={20} /> },
   { id: 'lagwad'    as Page, label: 'Lagwad Types',   labelMr: 'लागवड प्रकार',   icon: <Leaf size={20} /> },
   { id: 'lagwadreport' as Page, label: 'Lagwad Report', labelMr: 'लागवड अहवाल', icon: <ClipboardList size={20} /> },
@@ -60,6 +62,7 @@ const [page,        setPage]        = useState<Page>(role === 'limited' ? 'entry
       case 'entry':     return <MilkEntryPage canEdit={true} canDelete={role === 'admin'} />;
       case 'farmers':   return <FarmersPage />;
       case 'bills':     return <BillsPage />;
+      case 'farmerbills': return <FarmerBillsPage />;
       case 'ledger':    return <LedgerPage />;
       case 'lagwad':    return <LagwadTypesPage />;
       case 'lagwadreport': return <LagwadReportPage />;
