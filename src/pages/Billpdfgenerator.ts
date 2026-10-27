@@ -708,7 +708,7 @@ async function htmlPagesToPdf(pages: string[], fileName: string): Promise<void> 
 // ─── Public: Bills PDF ───────────────────────────────────────────────────────
 
 export async function generateBillsPDF(
-bills: BillResponse[], farmerEntries: Record<number, MilkEntryResponse[]>, periodLabel: string, lm: Record<number, LedgerResponse>,
+bills: BillResponse[], farmerEntries: Record<number, MilkEntryResponse[]>, periodLabel: string, _lm: Record<number, LedgerResponse>,
 ): Promise<void> {
   if (!bills.length) return;
 
@@ -729,7 +729,7 @@ bills: BillResponse[], farmerEntries: Record<number, MilkEntryResponse[]>, perio
 // ─── Public: Payment Register PDF (dynamic multi-page) ───────────────────────
 
 export async function generatePaymentRegisterPDF(
-bills: BillResponse[], periodLabel: string, lm: Record<number, LedgerResponse>,
+bills: BillResponse[], periodLabel: string, _lm: Record<number, LedgerResponse>,
 ): Promise<void> {
   if (!bills.length) return;
 
